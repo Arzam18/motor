@@ -1,29 +1,25 @@
-cmake_minimum_required(VERSION 3.28)
-project(motor CXX)
+CXX ?= clang++
+CXXFLAGS += -std=c++20 -O3 -Wunused -Wall -Wextra -DNDEBUG -march=native
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ifeq ($(OS), Windows_NT)
+    EXE ?= Motor.exe
+    ifeq ($(findstring g++,$(CXX)),)
+        CXXFLAGS += -Wl,/STACK:16777216
+    else
+        CXXFLAGS += -Wl,--stack,16777216
+    endif
+else
+    EXE ?= motor
+    CXXFLAGS += -lm
+endif
 
-if(MSVC)
-    add_compile_options(/O2 /DNDEBUG)
-else()
-    add_compile_options(-O3 -DNDEBUG -flto)
-    include(CheckCXXCompilerFlag)
-    check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
-    if(COMPILER_SUPPORTS_MARCH_NATIVE)
-        add_compile_options(-march=native)
-    endif()
-endif()
+CLANG_PLUS_PLUS_18 := $(shell command -v clang++-18 2>/dev/null)
+ifneq ($(strip $(CLANG_PLUS_PLUS_18)),)
+    CXX = clang++-18
+endif
 
-# Copy nnue.bin to build directory
-add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/nnue.bin ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin
-    DEPENDS ${CMAKE_SOURCE_DIR}/nnue.bin
-    COMMENT "Copying nnue.bin to build directory"
-)
+all:
+	$(CXX) $(CXXFLAGS) main.cpp -o $(EXE)
 
-add_custom_target(copy_nnue_bin ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin)
-
-add_executable(motor main.cpp)
-add_dependencies(motor copy_nnue_bin)
+clean:
+	rm -f $(EXE) Motor.exe
