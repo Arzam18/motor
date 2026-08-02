@@ -257,6 +257,7 @@ private:
 #endif
 };
 
-extern perspective_network<HIDDEN_SIZE> network;
+// Declared inline for C++17 single-definition ODR compliance across translation units
+inline perspective_network<HIDDEN_SIZE> network;
 
 #endif // MOTOR_NNUE_HPP
