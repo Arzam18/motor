@@ -1,22 +1,29 @@
 cmake_minimum_required(VERSION 3.28)
-project(motor)
+project(motor CXX)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-set(CMAKE_CXX_FLAGS "-march=native")
+if(MSVC)
+    add_compile_options(/O2 /DNDEBUG)
+else()
+    add_compile_options(-O3 -DNDEBUG -flto)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
+    if(COMPILER_SUPPORTS_MARCH_NATIVE)
+        add_compile_options(-march=native)
+    endif()
+endif()
 
-# Add a custom command to copy nnue.bin to the build directory
+# Copy nnue.bin to build directory
 add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/nnue.bin ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin
-        DEPENDS ${CMAKE_SOURCE_DIR}/nnue.bin
-        COMMENT "Copying nnue.bin"
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/nnue.bin ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin
+    DEPENDS ${CMAKE_SOURCE_DIR}/nnue.bin
+    COMMENT "Copying nnue.bin to build directory"
 )
 
-# Add nnue.bin to the list of source files
-set(GENERATED_FILES ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin)
+add_custom_target(copy_nnue_bin ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/nnue.bin)
 
-# Add the executable target
-add_executable(motor main.cpp ${GENERATED_FILES})
+add_executable(motor main.cpp)
+add_dependencies(motor copy_nnue_bin)
