@@ -3,9 +3,9 @@ name: Motor Android Build
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   workflow_dispatch:
 
 jobs:
@@ -23,28 +23,70 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r26b
+          ndk-version: r28
 
-      - name: Fix unsupported native architecture flag
+      - name: Install CMake
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+
+      - name: Fix ARM64 architecture flag
         run: |
           sed -i 's/-march=native/-march=armv8-a/g' CMakeLists.txt
 
+      - name: Download NNUE network
+        run: |
+          set -euo pipefail
+
+          test -s net.txt || {
+            echo "::error::net.txt is missing or empty"
+            exit 1
+          }
+
+          NET_URL="$(head -n 1 net.txt | tr -d '\r')"
+
+          case "$NET_URL" in
+            https://*) ;;
+            *)
+              echo "::error::Invalid NNUE network URL in net.txt"
+              exit 1
+              ;;
+          esac
+
+          curl --fail --location --retry 3 \
+            "$NET_URL" \
+            --output nnue.bin
+
+          NET_SIZE="$(stat -c '%s' nnue.bin)"
+
+          if [ "$NET_SIZE" -lt 18883586 ]; then
+            echo "::error::NNUE network is too small: $NET_SIZE bytes"
+            exit 1
+          fi
+
+          echo "NNUE network downloaded: $NET_SIZE bytes"
+
       - name: Configure CMake
         run: |
-          mkdir build
-          cd build
-          cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+          cmake -S . -B build \
+            -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-29 \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build Motor Engine
-        run: cmake --build build --config Release -j $(nproc)
+        run: |
+          cmake --build build --config Release -j "$(nproc)"
+
+      - name: Verify Engine
+        run: |
+          test -f build/motor
+          file build/motor
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Motor-Android-arm64
           path: build/motor
+          if-no-files-found: error
           retention-days: 7
