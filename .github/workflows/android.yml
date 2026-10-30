@@ -3,9 +3,9 @@ name: Motor Android Build
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   workflow_dispatch:
 
 jobs:
@@ -23,22 +23,23 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r28
+          ndk-version: r29
 
-      - name: Verify NDK Clang
+      - name: Verify Clang version
         env:
           NDK_PATH: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
 
           CLANG="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
-
           "$CLANG" --version
 
-          VERSION=$("$CLANG" --version | sed -nE 's/.*clang version ([0-9]+).*/\1/p' | head -n 1)
+          VERSION=$("$CLANG" --version |
+            sed -nE 's/.*clang version ([0-9]+).*/\1/p' |
+            head -n 1)
 
           if [ -z "$VERSION" ] || [ "$VERSION" -lt 19 ]; then
-            echo "::error::Motor requires Clang 19 or newer"
+            echo "::error::Motor requires Clang 19 or newer; detected version: ${VERSION:-unknown}"
             exit 1
           fi
 
@@ -51,17 +52,18 @@ jobs:
           mkdir build
           cd build
           cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-29 \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build Motor Engine
-        run: cmake --build build --config Release -j $(nproc)
+        run: cmake --build build --config Release -j "$(nproc)"
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Motor-Android-arm64
           path: build/motor
+          if-no-files-found: error
           retention-days: 7
