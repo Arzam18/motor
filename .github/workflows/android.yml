@@ -1,3 +1,4 @@
+
 name: Motor Android Build
 
 on:
@@ -23,6 +24,10 @@ jobs:
         id: setup-ndk
         with:
           ndk-version: r26b
+
+      - name: Fix unsupported native architecture flag
+        run: |
+          sed -i 's/-march=native/-march=armv8-a/g' CMakeLists.txt
 
       - name: Configure CMake
         run: |
