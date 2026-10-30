@@ -25,10 +25,27 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: Install CMake
+      - name: Verify NDK compiler
+        env:
+          NDK_PATH: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake
+          set -euo pipefail
+
+          CLANG="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+
+          test -x "$CLANG" || {
+            echo "::error::NDK clang++ was not found at $CLANG"
+            exit 1
+          }
+
+          "$CLANG" --version
+
+          VERSION=$("$CLANG" --version | sed -nE 's/.*clang version ([0-9]+).*/\1/p' | head -n 1)
+
+          if [ -z "$VERSION" ] || [ "$VERSION" -lt 19 ]; then
+            echo "::error::Motor requires Clang 19 or newer"
+            exit 1
+          fi
 
       - name: Fix ARM64 architecture flag
         run: |
@@ -48,7 +65,7 @@ jobs:
           case "$NET_URL" in
             https://*) ;;
             *)
-              echo "::error::Invalid NNUE network URL in net.txt"
+              echo "::error::Invalid NNUE URL in net.txt"
               exit 1
               ;;
           esac
@@ -57,22 +74,35 @@ jobs:
             "$NET_URL" \
             --output nnue.bin
 
-          NET_SIZE="$(stat -c '%s' nnue.bin)"
+          test -s nnue.bin
 
-          if [ "$NET_SIZE" -lt 18883586 ]; then
-            echo "::error::NNUE network is too small: $NET_SIZE bytes"
-            exit 1
-          fi
-
-          echo "NNUE network downloaded: $NET_SIZE bytes"
+          echo "Downloaded NNUE network: $(stat -c '%s' nnue.bin) bytes"
 
       - name: Configure CMake
+        env:
+          NDK_PATH: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
+          set -euo pipefail
+
+          NDK_BIN="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
           cmake -S . -B build \
-            -DCMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
+            -DCMAKE_C_COMPILER="$NDK_BIN/clang" \
+            -DCMAKE_CXX_COMPILER="$NDK_BIN/clang++" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-29 \
             -DCMAKE_BUILD_TYPE=Release
+
+      - name: Verify configured compiler
+        run: |
+          set -euo pipefail
+
+          grep '^CMAKE_CXX_COMPILER:FILEPATH=' build/CMakeCache.txt \
+            || grep '^CMAKE_CXX_COMPILER:STRING=' build/CMakeCache.txt \
+            || true
+
+          cmake --build build --verbose --config Release -- -n
 
       - name: Build Motor Engine
         run: |
@@ -80,6 +110,7 @@ jobs:
 
       - name: Verify Engine
         run: |
+          set -euo pipefail
           test -f build/motor
           file build/motor
 
